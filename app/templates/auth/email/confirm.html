@@ -1,0 +1,3 @@
+<b>{{ user.username }}</b>:<br>
+    您好！欢迎您的注册。请<a href="{{ url_for('auth.confirm', token=token, _external=True)}}">点击</a>，激活用户注册！<br>
+    激活有效时间为该邮件发出1小时内！

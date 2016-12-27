@@ -9,7 +9,7 @@ def send_asyc_email(app, msg):
 
 
 def send_email(to, subject, template, **kwargs):
-    app = current_app._getcurrent_object()  # werkzeug.local的LocalProxy(LocalStack().top.app)的方法获得
+    app = current_app._get_current_object()  # werkzeug.local的LocalProxy(LocalStack().top.app)的方法获得
     msg = Message(app.config['FLASKY_MAIL_SUBJECT_PREFIX']+''+subject, sender=app.config['FLASKY_MAIL_SENDER'], recipients=[to])
     msg.body = render_template(template+'.txt', **kwargs)
     msg.html = render_template(template+'.html', **kwargs)

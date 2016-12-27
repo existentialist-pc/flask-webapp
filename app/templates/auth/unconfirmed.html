@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}Flasky - 发送激活邮件{% endblock %}
+
+{% block page_content %}
+    <div class="page-header">
+        <h1>重发激活邮件</h1>
+    </div>
+    <div>
+        <p><b>{{ current_user.username }}</b>:</p>
+        <p>您好！您尚未激活。请<a href="{{ url_for('auth.send_confirm')}}">点击</a>向注册邮箱发送激活邮件</p>
+        <p>激活有效时间为该邮件发出1小时内！</p>
+    </div>
+{% endblock %}

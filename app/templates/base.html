@@ -22,13 +22,13 @@
             </div>
             <div class="navbar-collapse collapse">
                 <ul class="nav navbar-nav">
-                    <li><a href="{{ url_for('main.index') }}">Home</a></li>
+                    <li><a href="{{ url_for('main.index') }}">主页</a></li>
                 </ul>
                 <ul class="nav navbar-nav navbar-right">
                     {% if current_user.is_authenticated %}  <!-- 该变量是通过flask_login传递的,is_authenticated是属性方法@property定义的 -->
-                    <li><a href="{{ url_for('auth.logout') }}">Log Out</a></li>
+                    <li><a href="{{ url_for('auth.logout') }}">登出</a></li>
                     {% else %}
-                    <li><a href="{{ url_for('auth.login') }}">Log in</a></li>
+                    <li><a href="{{ url_for('auth.login') }}">登录</a></li>
                     {% endif %}
                 </ul>
             </div>
