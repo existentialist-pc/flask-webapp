@@ -56,9 +56,12 @@ def confirm(token):
 
 @auth.before_app_request   # 获取请求权限前执行，类似middleware
 def before_request():
-    if current_user.is_authenticated and current_user.confirmed is False \
-        and request.endpoint[:5] != 'auth.' and request.endpoint != 'static':  # request.endpoint为Flask定义，一般为视图函数名
-        return redirect(url_for('auth.unconfirmed'))
+    if current_user.is_authenticated:
+        current_user.ping()
+        if current_user.confirmed is False \
+                and request.endpoint[:5] != 'auth.' \
+                and request.endpoint != 'static':  # request.endpoint为Flask定义，为视图函数名
+            return redirect(url_for('auth.unconfirmed'))
 
 
 @auth.route('/unconfirmed')

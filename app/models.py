@@ -1,18 +1,45 @@
 from . import db
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin
+from flask_login import UserMixin, AnonymousUserMixin
 from . import login_manager
 from flask import current_app  # 获取当前app的相关配置信息
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
+from datetime import datetime
+
+class Permission:
+    FOLLOW = 0x01
+    COMMENT = 0x02
+    WRITE_ARTICLES = 0x04
+    MODERATE_COMMENTS = 0x08
+    ADMINISTER = 0x80
+
 
 class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展。
     __tablename__ = 'roles'
     id = db.Column(db.Integer, primary_key=True)  # .Column.Integer属性方法并未自动匹配，原因是它们搜索获自sqlalchemy包
     name = db.Column(db.String(64), unique=True)
-    users = db.relationship('User', backref='role')  # 该表某数据与User表内哪些数据具有关联性
+    permission = db.Column(db.Integer)
+    default = db.Column(db.Boolean, default=False, index=True)  # 用于初始化User时的默认role设置，为True则为用户的默认role。
+    users = db.relationship('User', backref='role', lazy='dynamic')  # 该表某数据与User表内哪些数据具有关联性
 
     def __repr__(self):
         return '<Role: %s>' % self.name
+
+    @staticmethod
+    def insert_roles():  # 该方法对所有该类实例只需要初始化执行一次
+        roles = {
+            'Administrator':(0xff, False),
+            'Moderator':(Permission.MODERATE_COMMENTS|Permission.WRITE_ARTICLES|Permission.COMMENT|Permission.FOLLOW, False),
+            'User':(Permission.WRITE_ARTICLES|Permission.COMMENT|Permission.FOLLOW, True)
+        }
+        for r in roles:
+            role = Role.query.filter_by(name=r).first()
+            if not role:
+                role = Role(name=r)
+            role.permission = roles[r][0]
+            role.default = roles[r][1]
+            db.session.add(role)
+        db.session.commit()
 
 
 class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断的方法。
@@ -23,6 +50,20 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
     password_hash = db.Column(db.String(128))
     role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))  # 定义该数据的外键关联性，该列关联roles.id
     confirmed = db.Column(db.Boolean, default=False)
+    name = db.Column(db.String(64))
+    location = db.Column(db.String(64))
+    about_me = db.Column(db.Text())
+    member_since = db.Column(db.DateTime(), default=datetime.utcnow)
+    last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
+
+
+    def __init__(self, **kwargs):  # 这样写要保证只有kw传递参数。省略了位置参数*args
+        super(User, self).__init__(**kwargs)
+        if self.role is None:  # 对各用户实例的role或role_id初始化
+            if self.email == current_app.config['FLASKY_ADMIN']:
+                self.role = Role.query.filter_by(permission=0xff).first()
+            if self.role is None:
+                self.role = Role.query.filter_by(default=True).first()
 
     def __repr__(self):
         return '<User: %s>' % self.username
@@ -55,7 +96,30 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
         db.session.commit()
         return True
 
-@login_manager.user_loader  # 该@下定义回调函数。函数固定为传递id为参数，获得user类实例或none。
+    def can(self, permissions):  # 判断中增加role要存在，进一步保证不出错
+        return self.role is not None and (self.role.permission & permissions) == permissions
+
+    def is_admin(self):
+        return self.can(Permission.ADMINISTER)
+
+    def ping(self):
+        self.last_seen = datetime.utcnow()
+        db.session.add(self)
+        db.session.commit()
+
+
+class AnonymousUser(AnonymousUserMixin):  # 继承is_anonymous方法属性为True，为默认匿名用户类增加需要的属性方法
+
+    def can(self, permissions):
+        return False
+
+    def is_admin(self):
+        return False
+
+login_manager.anonymous_user = AnonymousUser  # .anonymouse_user默认初始化为AnonymousUserMixin类。注意是类而不是实例
+
+
+@login_manager.user_loader  # 该@下定义回调函数。函数固定为传递id为参数，获得user类实例或none。该内嵌的闭包关系到current_app
 # 该回调函数在reload_user时执行 => user_id从session['user_id']获得，ctx = _request_ctx_stack.top  ctx.user = 该函数返回实例对象
 def load_user(user_id):
     return User.query.get(int(user_id))
