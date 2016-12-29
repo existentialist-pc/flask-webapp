@@ -37,6 +37,7 @@ def register():
         token = user.generate_confirmation_token()
         send_email(user.email, '确认用户注册', 'auth/email/confirm', token=token, user=user)
         flash('您已注册登录,请保持登录状态，并60分钟内在注册邮箱确认激活！')
+        login_user(user)
         return redirect(url_for('main.index'))
     return render_template('auth/register.html', form=form)
 
