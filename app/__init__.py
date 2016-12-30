@@ -3,6 +3,7 @@ from flask_bootstrap import Bootstrap
 from flask_moment import Moment
 from flask_mail import Mail
 from flask_login import LoginManager  # 页面登录相关
+from flask_pagedown import PageDown
 
 from flask import Flask
 from config import config
@@ -11,6 +12,7 @@ db = SQLAlchemy()
 bootstrap = Bootstrap()
 moment = Moment()
 mail = Mail()
+pagedown = PageDown()
 
 login_manager = LoginManager()
 login_manager.session_protection = 'strong'  # 强保护，检测用户的IP，代理变动等，异常即自动登出。
@@ -28,6 +30,7 @@ def create_app(config_name):
     moment.init_app(app)
     mail.init_app(app)
     login_manager.init_app(app)
+    pagedown.init_app(app)
 
     # blueprint注册
     from .main import main as main_blueprint

@@ -3,10 +3,11 @@ from flask_wtf import FlaskForm
 from wtforms import StringField, SubmitField, TextAreaField, BooleanField, SelectField
 from wtforms import ValidationError
 from wtforms.validators import DataRequired, Length, Email, Regexp
+from flask_pagedown.fields import PageDownField  # 富文本编辑替换TextAreaField，提供Markdown预览相关
 
 
 class PostForm(FlaskForm):
-    content = TextAreaField('写点什么？', validators=[DataRequired()])
+    content = PageDownField('写点什么？', validators=[DataRequired()])
     submit = SubmitField('确认')
 
 

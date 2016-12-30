@@ -7,6 +7,8 @@ from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from datetime import datetime
 import hashlib
 from flask import request
+from markdown2 import markdown
+import bleach
 
 class Permission:
     FOLLOW = 0x01
@@ -22,6 +24,29 @@ class Post(db.Model):
     content = db.Column(db.Text())
     timestamp = db.Column(db.DateTime(), default=datetime.utcnow, index=True)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    content_html = db.Column(db.Text())
+
+    @staticmethod
+    def forge_posts(count=100):
+        from random import seed, randint
+        import forgery_py
+        seed()
+        user_count = User.query.count()
+        for i in range(count):
+            user = User.query.offset(randint(0,user_count-1)).first()
+            post = Post(content=forgery_py.lorem_ipsum.sentences(randint(1,3)),
+                        timestamp=forgery_py.date.date(True),
+                        auth=user)
+            db.session.add(post)
+            db.session.commit()
+
+    @staticmethod
+    def on_changed_body(target, value, oldvalue, initiator):  # 回调函数
+        allowed_tags = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol', 'pre', 'strong',
+                        'ul', 'h1', 'h2', 'h3', 'p', 'br', 'hr']  # 'br'没就没换行, bleach过滤在markdown转化后
+        target.content_html = bleach.clean(markdown(value), tags=allowed_tags, strip=True)
+
+db.event.listen(Post.content, 'set', Post.on_changed_body)  # SQLAlchemy提供事件监听回调，set就执行
 
 
 class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展。
@@ -129,6 +154,30 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
         if not self.avatar_hash:
             self.avatar_hash = hash
         return '%s/%s?s=%s&d=%s&r=%s' % (url, hash, size, default, rating)
+
+    @staticmethod
+    def forge_users(count=100):
+        from sqlalchemy.exc import IntegrityError
+        from random import seed
+        import forgery_py
+        seed()  # 初始化随机数生成器，防止生成规律的雷同性。如果每次seed()传入相同的参数，则在生成时会有相同的规律性
+        for i in range(count):
+            u = User(
+                username=forgery_py.internet.user_name(True),
+                email = forgery_py.internet.email_address(),
+                password = forgery_py.lorem_ipsum.word(),
+                confirmed = True,
+                name = forgery_py.name.full_name(),
+                location = forgery_py.address.city(),
+                about_me=forgery_py.lorem_ipsum.sentence(),
+                member_since = forgery_py.date.date(True)
+            )
+            db.session.add(u)
+            try:
+                db.session.commit()
+            except IntegrityError:  # unique错误
+                db.session.rollback()
+
 
 
 class AnonymousUser(AnonymousUserMixin):  # 继承is_anonymous方法属性为True，为默认匿名用户类增加需要的属性方法

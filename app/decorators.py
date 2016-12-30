@@ -9,7 +9,7 @@ def permission_required(permission):  # 同@login_required实现
         @wraps(fn)
         def wrapper(*args, **kwargs):
             if not current_user.can(permission):
-                abort(403)
+                abort(403)  # 返回403状态码 可用.app_errorhandler(403)设置自定义渲染页面
             return fn(*args, **kwargs)
         return wrapper
     return decorator

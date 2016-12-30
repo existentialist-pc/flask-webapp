@@ -2,7 +2,7 @@ from . import main
 from .forms import PostForm, EditProfileForm, EditProfileAdminForm
 from .. import db
 from ..models import User, Role, Post, Permission
-from flask import render_template, abort, flash, redirect, url_for
+from flask import render_template, abort, flash, redirect, url_for, request, current_app
 from flask_login import login_required, current_user
 from ..decorators import admin_required
 
@@ -11,12 +11,38 @@ from ..decorators import admin_required
 def index():
     form = PostForm()
     if current_user.can(Permission.WRITE_ARTICLES) and form.validate_on_submit():
-        post = Post(content=form.content.data, auth=current_user._get_current_object())
+        post = Post(content=form.content.data, auth=current_user._get_current_object())  # auth要被赋予User对象本身，不是代理
         db.session.add(post)
         db.session.commit()
         return redirect(url_for('main.index'))
-    posts = Post.query.order_by(Post.timestamp.desc()).all()  # 类.列属性.desc() 传入排序函数
-    return render_template('index.html', form=form, posts = posts)
+    page = request.args.get('page', 1, type=int)  # 从GET请求url中获取参数,’page‘为qs
+    pagination = Post.query.order_by(Post.timestamp.desc()).paginate(
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)  # 创建Post查询结果分页信息类，现在page页
+    posts = pagination.items  # 类.列属性.desc() 传入排序函数
+    return render_template('index.html', form=form, posts = posts, pagination=pagination)
+
+
+@main.route('/post/<int:id>')
+def post(id):
+    post = Post.query.get_or_404(id)  # 合并404逻辑
+    return render_template('post.html', posts=[post])
+
+
+@main.route('/edit-post/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_post(id):
+    post = Post.query.get_or_404(id)
+    if current_user != post.auth and not current_user.is_admin():
+        return redirect(url_for('main.post', id=id))  # abort(403)
+    form = PostForm()
+    if form.validate_on_submit():
+        post.content = form.content.data
+        db.session.add(post)
+        db.session.commit()
+        flash('短文章已经更新')
+        return redirect(url_for('main.post', id=id))
+    form.content.data = post.content
+    return render_template('edit_post.html',form=form)
 
 
 @main.route('/user/<username>')
@@ -24,7 +50,8 @@ def user(username):  # 此页面可被非该用户查看
     user = User.query.filter_by(username=username).first()
     if not user:
         abort(404)
-    return render_template('user.html', user=user)
+    posts = user.posts.order_by(Post.timestamp.desc()).all()
+    return render_template('user.html', user=user, posts=posts)
 
 
 @main.route('/edit-profile', methods=['GET', 'POST'])
