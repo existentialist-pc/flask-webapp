@@ -10,6 +10,7 @@ from flask import request
 from markdown2 import markdown
 import bleach
 
+
 class Permission:
     FOLLOW = 0x01
     COMMENT = 0x02
@@ -77,6 +78,13 @@ class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展�
         db.session.commit()
 
 
+class Follow(db.Model):
+    __tablename__ = 'follows'
+    follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    followed_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
+    timestamp = db.Column(db.DateTime(), default=datetime.utcnow)
+
+
 class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断的方法
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -92,6 +100,17 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
     last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
     avatar_hash = db.Column(db.String(32))  # md5格式
     posts = db.relationship('Post', backref='auth', lazy='dynamic')
+    followed = db.relationship('Follow',
+                               foreign_keys=[Follow.follower_id],
+                               backref=db.backref('follower', lazy='joined'),
+                               lazy='dynamic',
+                               cascade='all, delete-orphan')
+    followers = db.relationship('Follow',
+                                foreign_keys=[Follow.followed_id],
+                                backref=db.backref('followed', lazy='joined'),
+                                lazy='dynamic',
+                                cascade='all, delete-orphan')
+
 
     def __init__(self, **kwargs):  # 这样写要保证只有kw传递参数。省略了位置参数*args
         super(User, self).__init__(**kwargs)
@@ -178,6 +197,28 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
             except IntegrityError:  # unique错误
                 db.session.rollback()
 
+    def is_following(self, user):
+        return self.followed.filter_by(followed_id=user.id).first() is not None  # 获得的是Follow()对象
+
+    def is_followed_by(self, user):
+        return self.followers.filer_by(follower_id=user.id).first() is not None
+
+    def follow(self, user):
+        if not self.is_following(user):
+            follow = Follow(followed=user,follower=self)  # 传递对象，自动获得对应的外键值
+            db.session.add(follow)
+            db.session.commit()
+
+    def unfollow(self, user):
+        follow = self.followed.filter_by(followed_id=user.id).first()
+        if follow:
+            db.session.delete(follow)
+            db.session.commit()
+
+    @property
+    def followed_posts(self):
+        return Post.query.join(Follow, Follow.followed_id==Post.author_id).\
+            filter(Follow.follower_id==self.id)  # filter指定类名！
 
 
 class AnonymousUser(AnonymousUserMixin):  # 继承is_anonymous方法属性为True，为默认匿名用户类增加需要的属性方法

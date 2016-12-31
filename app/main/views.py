@@ -1,10 +1,10 @@
 from . import main
 from .forms import PostForm, EditProfileForm, EditProfileAdminForm
 from .. import db
-from ..models import User, Role, Post, Permission
+from ..models import User, Role, Post, Permission, Follow
 from flask import render_template, abort, flash, redirect, url_for, request, current_app
 from flask_login import login_required, current_user
-from ..decorators import admin_required
+from ..decorators import admin_required, permission_required
 
 
 @main.route('/', methods=['GET', 'POST'])
@@ -54,6 +54,64 @@ def user(username):  # 此页面可被非该用户查看
     return render_template('user.html', user=user, posts=posts)
 
 
+@main.route('/follow/<username>')
+@permission_required(Permission.FOLLOW)
+def follow(username):
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        flash('该用户不存在')
+        abort(404)
+    if current_user.is_following(user):
+        flash('您已关注该用户，不用重复关注')
+        return redirect(url_for('main.user', username=username))
+    current_user.follow(user)
+    flash('已成功关注%s' % user.username)
+    return redirect(url_for('main.user', username=username))
+
+
+@main.route('/unfollow/<username>')
+@permission_required(Permission.FOLLOW)
+def unfollow(username):
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        flash('该用户不存在')
+        abort(404)
+    if not current_user.is_following(user):
+        flash('您并未关注该用户')
+        return redirect(url_for('main.user', username=username))
+    current_user.unfollow(user)
+    flash('已取消关注%s' % user.username)
+    return redirect(url_for('main.user', username=username))
+
+
+@main.route('/followers/<username>')
+def followers(username):
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        flash('该用户不存在')
+        abort(404)
+    page = request.args.get('page', 1, type=int)
+    pagination = user.followers.order_by(Follow.timestamp.desc()).paginate(
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)
+    follows = [{'user':item.follower, 'timestamp':item.timestamp } for item in pagination.items]
+    return render_template('follows.html', pagination=pagination, follows=follows,
+                           user=user, endpoint='main.followers', title='的关注者')
+
+
+@main.route('/followed_by/<username>')
+def followed_by(username):
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        flash('该用户不存在')
+        abort(404)
+    page = request.args.get('page', 1, type=int)
+    pagination = user.followed.order_by(Follow.timestamp.desc()).paginate(
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)
+    follows = [{'user': item.followed, 'timestamp': item.timestamp} for item in pagination.items]
+    return render_template('follows.html', pagination=pagination, follows=follows,
+                           user=user, endpoint='main.followed_by', title='关注的人')
+
+
 @main.route('/edit-profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
@@ -97,9 +155,6 @@ def edit_profile_admin(id):
     form.location.data = user.location
     form.about_me.data = user.about_me
     return render_template('edit_profile.html', form=form, user=user)  # 共用模板
-
-
-from ..decorators import permission_required
 
 
 @main.route('/admin')
