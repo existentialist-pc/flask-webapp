@@ -1,8 +1,8 @@
 from . import main
-from .forms import PostForm, EditProfileForm, EditProfileAdminForm
+from .forms import PostForm, EditProfileForm, EditProfileAdminForm, CommentForm
 from .. import db
-from ..models import User, Role, Post, Permission, Follow
-from flask import render_template, abort, flash, redirect, url_for, request, current_app
+from ..models import User, Role, Post, Permission, Follow, Comment
+from flask import render_template, abort, flash, redirect, url_for, request, current_app, make_response
 from flask_login import login_required, current_user
 from ..decorators import admin_required, permission_required
 
@@ -15,17 +15,52 @@ def index():
         db.session.add(post)
         db.session.commit()
         return redirect(url_for('main.index'))
+    show_followed = False
+    if current_user.is_authenticated:
+        show_followed = bool(request.cookies.get('show_followed', ''))
+    if show_followed:
+        query = current_user.followed_posts
+    else:
+        query = Post.query
     page = request.args.get('page', 1, type=int)  # 从GET请求url中获取参数,’page‘为qs
-    pagination = Post.query.order_by(Post.timestamp.desc()).paginate(
+    pagination = query.order_by(Post.timestamp.desc()).paginate(
         page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)  # 创建Post查询结果分页信息类，现在page页
     posts = pagination.items  # 类.列属性.desc() 传入排序函数
-    return render_template('index.html', form=form, posts = posts, pagination=pagination)
+    return render_template('index.html', form=form, posts=posts, pagination=pagination, show_followed=show_followed)
 
 
-@main.route('/post/<int:id>')
+@main.route('/all')  # 可以做api
+@login_required
+def show_all():
+    resp = make_response(redirect(url_for('main.index')))
+    resp.set_cookie('show_followed', '', max_age=30*24*3600)
+    return resp
+
+@main.route('/followed')  # 可以做api
+@login_required
+def show_followed():
+    resp = make_response(redirect(url_for('main.index')))
+    resp.set_cookie('show_followed', '1', max_age=30*24*3600)
+    return resp
+
+
+@main.route('/post/<int:id>', methods=['GET', 'POST'])
 def post(id):
     post = Post.query.get_or_404(id)  # 合并404逻辑
-    return render_template('post.html', posts=[post])
+    form = CommentForm()
+    if current_user.can(Permission.COMMENT) and form.validate_on_submit():
+        comment = Comment(content=form.content.data, post=post, auth=current_user._get_current_object())
+        db.session.add(comment)
+        db.session.commit()
+        flash('评论成功！')
+        return redirect(url_for('main.post', id=post.id, page=1))  # 升序排列则定义返回page=-1，取最后一页。
+    page = request.args.get('page', 1, type=int)
+    if page == -1:
+        page = (post.comments.count() / current_app.config['FLASKY_POSTS_PER_PAGE']) + 1
+    pagination = post.comments.order_by(Comment.timestamp.desc()).paginate(
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)
+    comments = pagination.items
+    return render_template('post.html', posts=[post], form=form, comments=comments, pagination=pagination)
 
 
 @main.route('/edit-post/<int:id>', methods=['GET', 'POST'])
@@ -155,6 +190,38 @@ def edit_profile_admin(id):
     form.location.data = user.location
     form.about_me.data = user.about_me
     return render_template('edit_profile.html', form=form, user=user)  # 共用模板
+
+
+@main.route('/moderate')
+@permission_required(Permission.MODERATE_COMMENTS)  # 通过在moderate.html设置{% set moderate = True %}使得只有该页面能进入禁封
+def moderate():
+    page = request.args.get('page', 1, type=int)
+    pagination = Comment.query.order_by(Comment.timestamp.desc()).paginate(
+        page, per_page=current_app.config['FLASKY_POSTS_PER_PAGE'], error_out=False)  # 当前页pagination.page
+    comments = pagination.items
+    return render_template('moderate.html', comments=comments, pagination=pagination, page=page)  # 为向评论able提供当前页面信息
+
+
+@main.route('/moderate/enable/<int:id>')
+@permission_required(Permission.MODERATE_COMMENTS)
+def moderate_enable(id):
+    comment = Comment.query.get_or_404(id)
+    if comment.disabled:
+        comment.disabled = False
+        db.session.add(comment)
+        db.session.commit()
+    return redirect(url_for('main.moderate', page=request.args.get('page', 1, type=int)))
+
+
+@main.route('/moderate/disable/<int:id>')
+@permission_required(Permission.MODERATE_COMMENTS)
+def moderate_disable(id):
+    comment = Comment.query.get_or_404(id)
+    if not comment.disabled:
+        comment.disabled = True
+        db.session.add(comment)
+        db.session.commit()
+    return redirect(url_for('main.moderate', page=request.args.get('page', 1, type=int)))
 
 
 @main.route('/admin')

@@ -6,6 +6,11 @@ from wtforms.validators import DataRequired, Length, Email, Regexp
 from flask_pagedown.fields import PageDownField  # 富文本编辑替换TextAreaField，提供Markdown预览相关
 
 
+class CommentForm(FlaskForm):
+    content = PageDownField('发表你的观点：', validators=[DataRequired()])
+    submit = SubmitField('确认')
+
+
 class PostForm(FlaskForm):
     content = PageDownField('写点什么？', validators=[DataRequired()])
     submit = SubmitField('确认')

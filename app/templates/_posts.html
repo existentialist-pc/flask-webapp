@@ -28,6 +28,9 @@
                     </a>
                     {% endif %}
                     <a href="{{url_for('main.post', id=post.id)}}"><span class="label label-default">永久链接</span></a>
+                    <a href="{{url_for('main.post', id=post.id)}}#comments">
+                        <span class="label label-primary">{{post.comments.count()}} 评论</span>
+                    </a>
                 </div>
             </div>
         </li>

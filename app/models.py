@@ -23,9 +23,10 @@ class Post(db.Model):
     __tablename__ = 'posts'
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text())
+    content_html = db.Column(db.Text())
     timestamp = db.Column(db.DateTime(), default=datetime.utcnow, index=True)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    content_html = db.Column(db.Text())
+    comments = db.relationship('Comment', backref='post', lazy='dynamic')
 
     @staticmethod
     def forge_posts(count=100):
@@ -42,12 +43,11 @@ class Post(db.Model):
             db.session.commit()
 
     @staticmethod
-    def on_changed_body(target, value, oldvalue, initiator):  # 回调函数
+    def on_changed_content(target, value, oldvalue, initiator):  # 回调函数
         allowed_tags = ['a', 'abbr', 'acronym', 'b', 'blockquote', 'code', 'em', 'i', 'li', 'ol', 'pre', 'strong',
                         'ul', 'h1', 'h2', 'h3', 'p', 'br', 'hr']  # 'br'没就没换行, bleach过滤在markdown转化后
         target.content_html = bleach.clean(markdown(value), tags=allowed_tags, strip=True)
 
-db.event.listen(Post.content, 'set', Post.on_changed_body)  # SQLAlchemy提供事件监听回调，set就执行
 
 
 class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展。
@@ -78,7 +78,7 @@ class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展�
         db.session.commit()
 
 
-class Follow(db.Model):
+class Follow(db.Model):  # 作为self-referential多对多关联表，要在User之前定义！foreign_key能找到
     __tablename__ = 'follows'
     follower_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
     followed_id = db.Column(db.Integer, db.ForeignKey('users.id'), primary_key=True)
@@ -100,6 +100,7 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
     last_seen = db.Column(db.DateTime(), default=datetime.utcnow)
     avatar_hash = db.Column(db.String(32))  # md5格式
     posts = db.relationship('Post', backref='auth', lazy='dynamic')
+    comments = db.relationship('Comment', backref='auth', lazy='dynamic')
     followed = db.relationship('Follow',
                                foreign_keys=[Follow.follower_id],
                                backref=db.backref('follower', lazy='joined'),
@@ -205,7 +206,7 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
 
     def follow(self, user):
         if not self.is_following(user):
-            follow = Follow(followed=user,follower=self)  # 传递对象，自动获得对应的外键值
+            follow = Follow(followed=user,follower=self)  # 传递对象，自动获得对应的外键值;查询用id
             db.session.add(follow)
             db.session.commit()
 
@@ -236,3 +237,23 @@ login_manager.anonymous_user = AnonymousUser  # .anonymouse_user默认初始化�
 # 该回调函数在reload_user时执行 => user_id从session['user_id']获得，ctx = _request_ctx_stack.top  ctx.user = 该函数返回实例对象
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text())
+    content_html = db.Column(db.Text())
+    disabled = db.Column(db.Boolean, default=False)
+    timestamp = db.Column(db.DateTime(), default=datetime.utcnow, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
+
+    @staticmethod
+    def on_changed_content(target, value, oldvalue, initiator):
+        allowed_tags = ['a', 'abbr', 'acronym', 'b', 'code', 'em', 'i', 'li', 'ol', 'strong',
+                        'ul', 'h1', 'p', 'br']
+        target.content_html = bleach.clean(markdown(value), tags=allowed_tags, strip=True)
+
+db.event.listen(Comment.content, 'set', Comment.on_changed_content)
+db.event.listen(Post.content, 'set', Post.on_changed_content)  # SQLAlchemy提供事件监听回调，set就执行
