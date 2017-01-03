@@ -34,7 +34,7 @@ def register():
         user = User(email=form.email.data, username=form.username.data, password=form.password.data)
         db.session.add(user)
         db.session.commit()
-        token = user.generate_confirmation_token()
+        token = user.generate_confirmation_token()  # 生成验证hash码
         send_email(user.email, '确认用户注册', 'auth/email/confirm', token=token, user=user)
         flash('您已注册登录,请保持登录状态，并60分钟内在注册邮箱确认激活！')
         login_user(user)
@@ -55,11 +55,11 @@ def confirm(token):
     return redirect(url_for('main.index'))
 
 
-@auth.before_app_request   # 获取请求权限前执行，类似middleware
+@auth.before_app_request  # 获取请求权限前执行，类似middleware
 def before_request():
     if current_user.is_authenticated:
         current_user.ping()
-        if current_user.confirmed is False \
+        if not current_user.confirmed \
                 and request.endpoint[:5] != 'auth.' \
                 and request.endpoint != 'static':  # request.endpoint为Flask定义，为视图函数名
             return redirect(url_for('auth.unconfirmed'))

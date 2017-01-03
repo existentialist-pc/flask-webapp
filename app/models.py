@@ -6,7 +6,7 @@ from flask import current_app  # 获取当前app的相关配置信息
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from datetime import datetime
 import hashlib
-from flask import request
+from flask import request, url_for
 from markdown2 import markdown
 import bleach
 
@@ -48,6 +48,17 @@ class Post(db.Model):
                         'ul', 'h1', 'h2', 'h3', 'p', 'br', 'hr']  # 'br'没就没换行, bleach过滤在markdown转化后
         target.content_html = bleach.clean(markdown(value), tags=allowed_tags, strip=True)
 
+    def to_json(self):
+        json_post = {
+            'url':url_for('api.get_post', id=self.id, _external=True),
+            'content':self.content,
+            'content_type':self.content_html,
+            'timestamp':self.timestamp,
+            'author':url_for('api.get_user', id=self.author_id, _external=True),
+            'comments':url_for('api.get_post_comments', id=self.id, _external=True),
+            'comment_count':self.comments.count()
+        }
+        return json_post
 
 
 class Role(db.Model):  # 用户类别类，适用于>2种用户类别的拓展。
@@ -137,9 +148,9 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
     def verify_password(self, password):  # 该password为常规password，hash过程由check_password_hash封装
         return check_password_hash(self.password_hash, password)  # 注意，check_password_hash()第二个参数才是未hash的参数！！
 
-    def generate_confirmation_token(self):
-        s = Serializer(current_app.config['SECRET_KEY'], expires_in=3600)
-        return s.dumps({'confirm':self.id})
+    def generate_confirmation_token(self, expiration=3600):
+        s = Serializer(current_app.config['SECRET_KEY'], expires_in=expiration)
+        return s.dumps({'id':self.id})
 
     def confirm(self, token):
         s = Serializer(current_app.config['SECRET_KEY'])  # 验证不需要获得expires_in信息
@@ -147,12 +158,23 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
             data = s.loads(token)
         except:
             return False
-        if data.get('confirm') != self.id:
+        if data.get('id') != self.id:
             return False
         self.confirmed = True
         db.session.add(self)
         db.session.commit()
         return True
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = Serializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token)
+        except:
+            return None  # 要统一返回的是没找到User
+        id = data.get('id', -1)  # 防止没id属性
+        return User.query.get(id)
+
 
     def can(self, permissions):  # 判断中增加role要存在，进一步保证不出错
         return self.role is not None and (self.role.permission & permissions) == permissions
@@ -184,13 +206,13 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
         for i in range(count):
             u = User(
                 username=forgery_py.internet.user_name(True),
-                email = forgery_py.internet.email_address(),
-                password = forgery_py.lorem_ipsum.word(),
-                confirmed = True,
-                name = forgery_py.name.full_name(),
-                location = forgery_py.address.city(),
+                email=forgery_py.internet.email_address(),
+                password=forgery_py.lorem_ipsum.word(),
+                confirmed=True,
+                name=forgery_py.name.full_name(),
+                location=forgery_py.address.city(),
                 about_me=forgery_py.lorem_ipsum.sentence(),
-                member_since = forgery_py.date.date(True)
+                member_since=forgery_py.date.date(True)
             )
             db.session.add(u)
             try:
@@ -221,6 +243,18 @@ class User(db.Model, UserMixin):  # UserMixin为该类添加用户状态判断�
         return Post.query.join(Follow, Follow.followed_id==Post.author_id).\
             filter(Follow.follower_id==self.id)  # filter指定类名！
 
+    def to_json(self):
+        json_user = {
+            'url_for':url_for('api.get_user', id=self.id, _external=True),
+            'username':self.username,
+            'member_since':self.member_since,
+            'last_seen':self.last_seen,
+            'posts':url_for('api.get_user_posts', id=self.id, _external=True),
+            'post_count':self.posts.count(),
+            'followed_posts':url_for('api.get_user_followed_posts', id=self.id, _external=True)
+        }
+        return json_user
+
 
 class AnonymousUser(AnonymousUserMixin):  # 继承is_anonymous方法属性为True，为默认匿名用户类增加需要的属性方法
 
@@ -234,9 +268,10 @@ login_manager.anonymous_user = AnonymousUser  # .anonymouse_user默认初始化�
 
 
 @login_manager.user_loader  # 该@下定义回调函数。函数固定为传递id为参数，获得user类实例或none。该内嵌的闭包关系到current_app
-# 该回调函数在reload_user时执行 => user_id从session['user_id']获得，ctx = _request_ctx_stack.top  ctx.user = 该函数返回实例对象
 def load_user(user_id):
     return User.query.get(int(user_id))
+# 该回调函数在reload_user时执行 => user_id从session['user_id']获得，ctx = _request_ctx_stack.top  ctx.user = 该函数返回实例对象
+# 可以试着改为login_manager.user_loader(lambda s: User.query.get(int(s))) 的匿名函数形式
 
 
 class Comment(db.Model):
@@ -254,6 +289,17 @@ class Comment(db.Model):
         allowed_tags = ['a', 'abbr', 'acronym', 'b', 'code', 'em', 'i', 'li', 'ol', 'strong',
                         'ul', 'h1', 'p', 'br']
         target.content_html = bleach.clean(markdown(value), tags=allowed_tags, strip=True)
+
+    def to_json(self):
+        json_comment = {
+            'url':url_for('api.get_comment', id=self.id, _external=True),
+            'content':self.content,
+            'content_html':self.content_html,
+            'timestamp':self.timestamp,
+            'post':url_for('api.get_post', id=self.post_id, _external=True),
+            'author':url_for('api.get_user', id=self.author_id, _external=True)
+        }
+        return json_comment
 
 db.event.listen(Comment.content, 'set', Comment.on_changed_content)
 db.event.listen(Post.content, 'set', Post.on_changed_content)  # SQLAlchemy提供事件监听回调，set就执行
