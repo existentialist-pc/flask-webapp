@@ -10,6 +10,8 @@ class Config:
     FLASKY_MAIL_SENDER = 'Admin P.C. <' + os.environ.get('MAIL_USERNAME') + '>'
     FLASKY_ADMIN = os.environ.get('FLASKY_ADMIN')
     FLASKY_POSTS_PER_PAGE = 6
+    FLASKY_COMMENTS_PER_PAGE = 6
+    FLASKY_FOLLOWS_PER_PAGE = 6
 
     @staticmethod
     def init_app(app):
@@ -28,6 +30,7 @@ class DevelopmenetConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
+    WTF_CSRF_ENABLED = False  # 禁用CSRF保护 表单隐藏证书令牌
     SQLALCHEMY_DATABASE_URI = os.environ.get('TEST_DATABASE_URI') or 'sqlite:///' + os.path.join(basedir, 'data-test.sql')
 
 

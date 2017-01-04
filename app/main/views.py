@@ -36,6 +36,7 @@ def show_all():
     resp.set_cookie('show_followed', '', max_age=30*24*3600)
     return resp
 
+
 @main.route('/followed')  # 可以做api
 @login_required
 def show_followed():
@@ -234,3 +235,14 @@ def for_admins_only():
 @permission_required(Permission.MODERATE_COMMENTS)
 def for_moderators_only():
     return "For comment moderators!"
+
+
+@main.route('/shutdown')
+def server_shutdown():
+    if not current_app.testing:
+        abort(404)
+    shutdown = request.environ.get('werkzeug.server.shutdown')  # 提供关闭函数
+    if not shutdown:
+        abort(500)
+    shutdown()
+    return 'Shutting down...'

@@ -11,8 +11,8 @@ auth = HTTPBasicAuth()
 def verify_password(email_or_token, password):
     if email_or_token == '':
         g.current_user = AnonymousUser()
-        return False  # 注意！这里认为是匿名用户依然返回True，即可以通过auth.login_required验证，返回False则不会通过！
-    if password =='':
+        return True  # 注意！这里认为是匿名用户依然返回True，即可以通过auth.login_required验证，返回False则不会通过！
+    if password == '':
         g.current_user = User.verify_auth_token(email_or_token)
         g.token_used = True
         return g.current_user is not None  # 简练！
@@ -30,8 +30,7 @@ def auth_error():  # 401 认证错误
 
 
 @api.before_request  # 针对api请求
-@auth.login_required  # 要求登录(verify_password返回True)才能使用api
-# 注意！如果取消该@，则不会运行@auth.verify_password修饰函数！g.current_user也不存在，会报错！
+@auth.login_required  # 要求登录(verify_password返回True)才能使用api。注意！如果取消该@，则不会运行@auth.verify_password修饰函数！g.current_user也不存在，会报错！
 def before_request():
     if not g.current_user.is_anonymous and not g.current_user.confirmed:
         return forbidden('Unconfirmed accout')
