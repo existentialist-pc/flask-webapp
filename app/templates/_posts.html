@@ -26,6 +26,9 @@
                     <a href="{{url_for('main.edit_post', id=post.id)}}">
                         <span class="label label-danger">修改[Admin]</span>
                     </a>
+                    <a href="{{url_for('main.delete_post', id=post.id)}}">
+                        <span class="label label-danger">删除[Admin]</span>
+                    </a>
                     {% endif %}
                     <a href="{{url_for('main.post', id=post.id)}}"><span class="label label-default">永久链接</span></a>
                     <a href="{{url_for('main.post', id=post.id)}}#comments">

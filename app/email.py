@@ -3,6 +3,7 @@ from flask_mail import Message
 from flask import current_app, render_template
 from . import mail
 
+
 def send_asyc_email(app, msg):
     with app.app_context():  # 激活程序上下文环境
         mail.send(msg)

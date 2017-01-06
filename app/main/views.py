@@ -5,6 +5,7 @@ from ..models import User, Role, Post, Permission, Follow, Comment
 from flask import render_template, abort, flash, redirect, url_for, request, current_app, make_response
 from flask_login import login_required, current_user
 from ..decorators import admin_required, permission_required
+from flask_sqlalchemy import get_debug_queries
 
 
 @main.route('/', methods=['GET', 'POST'])
@@ -225,6 +226,16 @@ def moderate_disable(id):
     return redirect(url_for('main.moderate', page=request.args.get('page', 1, type=int)))
 
 
+@main.route('/delete/post/<int:id>')
+@permission_required(Permission.ADMINISTER)
+def delete_post(id):
+    post = Post.query.get_or_404(id)
+    db.session.delete(post)
+    db.session.commit()
+    flash('您已经删除post：%s' % (post.id))
+    return redirect(url_for('main.index'))
+
+
 @main.route('/admin')
 @admin_required
 def for_admins_only():
@@ -246,3 +257,12 @@ def server_shutdown():
         abort(500)
     shutdown()
     return 'Shutting down...'
+
+
+@main.after_app_request
+def after_request(response):
+    for query in get_debug_queries():
+        if query.duration >= current_app.config['FLASKY_SLOW_DB_QUERY_TIME']:
+            current_app.logger.warning('Slow query: %s\nParameters: %s\nDuration: %s\nContext: %s\n'
+                                       % (query.statement, query.parameters, query.duration, query.context))
+    return response
