@@ -58,7 +58,7 @@ def profile(length=25, profile_dir=None):
 def deploy():
     from flask_migrate import upgrade
     from app.models import Role
-    upgrade()  #
+    upgrade()  # 找到migrations/文件夹 更新数据库
     Role.insert_roles()  # 初始化
 
 
